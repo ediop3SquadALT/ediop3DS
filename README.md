@@ -1,5 +1,5 @@
 # ediop3DS
-A DoS tool in bash. Simulating DDoS every tool that claims to be a DDoS is a DoS tool Simulating DDoS
+A DDoS tool in bash using a user agents list with 90 million user agents. and 100k of each are used to all attacks
 
 steps to run and requirements.
 
