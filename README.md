@@ -5,7 +5,7 @@ steps to run and requirements.
 
 install these first.
 
-sudo apt update && sudo apt install -y curl nmap hping3 bc net-tools && sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
+sudo apt update && sudo apt install -y curl nmap hping3 bc net-tools && sudo sysctl -w net.ipv4.ping_group_range="0 2147483647" && pip3 install scapy
 
 hping3 is required for some attacks I couldn't make.
 
