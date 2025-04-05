@@ -1,6 +1,10 @@
 # ediop3DS
 A DDoS tool in bash using a user agents list with 90 million user agents. and 100k of each are used to all attacks
 
+btw http_flood.py and syn_flood.py aren't required by the script
+
+use them separated if you want.
+
 steps to run and requirements.
 
 install these first.
